@@ -1,467 +1,202 @@
 import pandas as pd
-import sklearn as sk
-from math import sqrt
-from sklearn.linear_model import LinearRegression, LassoLars 
-from sklearn.metrics import mean_squared_error
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.feature_selection import SelectKBest, f_regression
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LinearRegression, LassoLars
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import PolynomialFeatures
+from sklearn.metrics import mean_squared_error
 
-def display_model_results(model_results, as_std_from_baseline=False):
+
+########################### Pairplot Function ###########################
+
+
+def plot_variable_pairs(df, drop_scaled_columns = True):
     '''
-    This function takes in the model_results dataframe created in the Model stage of the 
-    project. This is a dataframe in tidy data format containing the following
-    data for each model created in the project:
-    - model number
-    - metric type (accuracy, precision, recall, f1 score)
-    - sample type (train, validate)
-    - score (the score for the given metric and sample types)
-    The function returns a pivot table of those values for easy comparison of
-    models, metrics, and samples. 
+    This function takes in a DataFrame and plots all of the 
+    pairwise relationships along with the regression line for each pair.
     '''
-    # create a pivot table of the model_results dataframe
-    # establish columns as the model_number, with index grouped by metric_type then sample_type, and values as score
-    # the aggfunc uses a lambda to return each individual score without any aggregation applied
-    if as_std_from_baseline:
-        return model_results.pivot_table(columns='model_number', 
-                                     index=('metric_type', 'sample_type'), 
-                                     values='std_from_baseline',
-                                     aggfunc=lambda x: x)
-    else:
-        return model_results.pivot_table(columns='model_number', 
-                                     index=('metric_type', 'sample_type'), 
-                                     values='score',
-                                     aggfunc=lambda x: x)        
+    if drop_scaled_columns:
+        scaled_columns = [c for c in df.columns if c.endswith('_scaled')]
+        df = df.drop(columns = scaled_columns)
+    #to see all the plots at once, pairplot but with more customizations
+    g = sns.PairGrid(df)
+    #the plots is the diagonal will be a distribution plot
+    g.map_diag(plt.hist) #one for a single variable
+    #the plots not in the diagonal will be a scatter plot
+    g.map_offdiag(sns.regplot) #one for the interaction of two variables
+    plt.show()
+    return g
 
-def get_best_model_results(model_results, n_models=3):
+########################### SelectKBest Function ###########################
+
+def select_kbest(predictors, target, number_of_features):
     '''
-    This function takes in the model_results dataframe created in the Modeling stage of the 
-    project. This is a dataframe in tidy data format containing the following
-    data for each model created in the project:
-    - model number
-    - metric type (accuracy, precision, recall, f1 score)
-    - sample type (train, validate)
-    - score (the score for the given metric and sample types)
-    The function identifies the {n_models} models with the highest scores for the given metric
-    type, as measured on the validate sample.
-    It returns a dataframe of information about those models' performance in the tidy data format
-    (as described above). 
-    The resulting dataframe can be fed into the display_model_results function for convenient display formatting.
+    This function takes in predictors(features), a target variable and the number of top features we want
+    and returns the top features that correlate with the target variable.
     '''
-    # create an array of model numbers for the best performing models
-    # by filtering the model_results dataframe for only validate scores
-    best_models = (model_results[(model_results.sample_type == 'validate')]
-                                                 # sort by score value in ascending order
-                                                 .sort_values(by='score', 
-                                                              ascending=True)
-                                                 # take only the model number for the top n_models
-                                                 .head(n_models).model_number
-                                                 # and take only the values from the resulting dataframe as an array
-                                                 .values)
-    # create a dataframe of model_results for the models identified above
-    # by filtering the model_results dataframe for only the model_numbers in the best_models array
-    # TODO: make this so that it will return n_models, rather than only 3 models
-    best_model_results = model_results[(model_results.model_number == best_models[0]) 
-                                     | (model_results.model_number == best_models[1]) 
-                                     | (model_results.model_number == best_models[2])]
+    #Initialize the f_selector object, 
+    #which defines the test for scoring the features 
+    #and the number of features we want to keep,
+    f_selector = SelectKBest(f_regression, k = number_of_features)
+    
+    #fitting the data into the model
+    #scoring, ranking and identifying the top k features
+    f_selector = f_selector.fit(predictors, target)
+    
+    #creating a list of the features that remain
+    f_support = f_selector.get_support()
 
-    return best_model_results
+    #We get a list of the feature names selected from 
+    #X_train using .loc with our mask, 
+    #using .columns to get the column names, 
+    #and convert the values to a list using .tolist()
+    f_feature = predictors.iloc[:, f_support].columns.tolist()
 
-def determine_regression_baseline(train, target):
+    return f_feature
+
+
+########################### RFE Function ###########################
+
+def rfe(predictors, target, number_of_features):
     '''
-    This function takes in a train sample and a continuous target variable label and 
-    determines whether the mean or median performs better as a baseline prediction. 
+    This function takes in predictors(features), a target variable and the number of top features we want 
+    and returns the top features that lead to the best performing linear regression model. 
     '''
-    # create empty dataframe for storing prediction results
-    results = pd.DataFrame(index=train.index)
-    # assign actual values for the target variable
-    results['actual'] = train[target]
-    # assign a baseline using mean
-    results['baseline_mean'] = train[target].mean()
-    # assign a baseline using median
-    results['baseline_median']= train[target].median()
+    #Initialize the linear regression object
+    lm = LinearRegression()
     
-    # get RMSE values for each potential baseline
-    RMSE_baseline_mean = sqrt(sk.metrics.mean_squared_error(results.actual, results.baseline_mean))
-    RMSE_baseline_median = sqrt(sk.metrics.mean_squared_error(results.actual, results.baseline_median))
-    
-    # compare the two RMSE values; drop the lowest performer and assign the highest performer to baseline variable
-    if RMSE_baseline_median < RMSE_baseline_mean:
-        results = results.drop(columns='baseline_mean')
-        results['RMSE_baseline'] = RMSE_baseline_median
-        baseline_type = 'median'
-    else:
-        results = results.drop(columns='baseline_median')
-        results['RMSE_baseline'] = RMSE_baseline_mean
-        baseline_type = 'mean'
-    
-    return baseline_type
-
-def run_baseline(train,
-                 validate,
-                 target,
-                 model_number,
-                 model_info,
-                 model_results):
-    
-    baseline_type = determine_regression_baseline(train, target)
-
-    y_train = train[target]
-    y_validate = validate[target]
-
-    # identify model number
-    model_number = 'baseline'
-    #identify model type
-    model_type = 'baseline'
-
-    # store info about the model
-
-    # create a dictionary containing model number and model type
-    dct = {'model_number': model_number,
-           'model_type': model_type}
-    # append that dictionary to the model_info dataframe
-    model_info = model_info.append(dct, ignore_index=True)
-
-
-    # establish baseline predictions for train sample
-    y_pred = baseline_pred = pd.Series(train[target].mean()).repeat(len(train))
-
-    # get metrics
-    dct = {'model_number': model_number, 
-           'sample_type': 'train', 
-           'metric_type': 'RMSE',
-           'score': sqrt(sk.metrics.mean_squared_error(y_train, y_pred))}
-    model_results = model_results.append(dct, ignore_index=True)
-
-
-    # establish baseline predictions for validate sample
-    if baseline_type == 'mean':
-        y_pred = baseline_pred = pd.Series(validate[target].mean()).repeat(len(validate))
-    elif baseline_type == 'median':
-        y_pred = baseline_pred = pd.Series(validate[target].median()).repeat(len(validate))
-
-    # get metrics
-    dct = {'model_number': model_number, 
-           'sample_type': 'validate', 
-           'metric_type': 'RMSE',
-           'score': sqrt(sk.metrics.mean_squared_error(y_validate, y_pred))}
-    model_results = model_results.append(dct, ignore_index=True)
-    
-    model_number = 0
-    
-    return model_number, model_info, model_results
-
-def run_OLS(train, validate, target, model_number, model_info, model_results):
-    # including the most highly correlated features from exploration
-    features = ['scaled_sqft',
-                'scaled_bedroomcnt',
-                'scaled_bathroomcnt',
-                'scaled_fullbathcnt',
-                'scaled_age',
-                'scaled_assessmentyear',
-                'scaled_yearbuilt',
-                'scaled_garagecarcnt',
-                'scaled_garagetotalsqft']
-
-    # establish model number
-    model_number += 1
-
-    # establish model type
-    model_type = 'OLS regression'
-
-    # create a dictionary containing the features and hyperparamters used in this model instance
-    dct = {'model_number': model_number,
-           'model_type': model_type,
-           'features': features}
-    # append that dictionary to the model_info dataframe
-    model_info = model_info.append(dct, ignore_index=True)
-
-    #split the samples into x and y
-    x_train = train[features]
-    y_train = train[target]
-
-    x_validate = validate[features]
-    y_validate = validate[target]
-
-    # create the model object and fit to the training sample
-    linreg = LinearRegression(normalize=True).fit(x_train, y_train)
-
-    # make predictions for the training sample
-    y_pred = linreg.predict(x_train)
-    sample_type = 'train'
-
-    # store information about model performance
-    # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-    dct = {'model_number': model_number, 
-           'sample_type': sample_type, 
-           'metric_type': 'RMSE',
-           'score': sqrt(sk.metrics.mean_squared_error(y_train, y_pred))}
-    model_results = model_results.append(dct, ignore_index=True)
-
-    # make predictions for the validate sample
-    y_pred = linreg.predict(x_validate)
-    sample_type = 'validate'
-
-    # store information about model performance
-    # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-    dct = {'model_number': model_number, 
-           'sample_type': sample_type, 
-           'metric_type': 'RMSE',
-           'score': sqrt(sk.metrics.mean_squared_error(y_validate, y_pred))}
-    model_results = model_results.append(dct, ignore_index=True)
-    
-    return model_number, model_info, model_results
-
-def run_PolyReg(train, validate, target, model_number, model_info, model_results):
-    
-    for degree in range(2, 5):
-
-        # including the most highly correlated features from exploration
-        features = ['scaled_sqft',
-                    'scaled_bedroomcnt',
-                    'scaled_bathroomcnt',
-                    'scaled_fullbathcnt',
-                    'scaled_age',
-                    'scaled_assessmentyear',
-                    'scaled_yearbuilt',
-                    'scaled_garagecarcnt',
-                    'scaled_garagetotalsqft']
-
-        # establish model number
-        model_number += 1
-
-        # establish model type
-        model_type = 'polynomial regression'
-
-        # create a dictionary containing the features and hyperparamters used in this model instance
-        dct = {'model_number': model_number,
-            'model_type': model_type,
-            'features': features,
-            'degree': degree}
-        # append that dictionary to the model_info dataframe
-        model_info = model_info.append(dct, ignore_index=True)
-
-        #split the samples into x and y
-        x_train = train[features]
-        y_train = train[target]
-
-        x_validate = validate[features]
-        y_validate = validate[target]
-
-        # create a polynomial features object
-        pf = PolynomialFeatures(degree=degree)
-        
-        # fit and transform the data
-        x_train_poly = pf.fit_transform(x_train)
-        x_validate_poly = pf.fit_transform(x_validate)
-
-        # create the model object and fit to the training sample
-        linreg = LinearRegression().fit(x_train_poly, y_train)
-        
-        # make predictions for the training sample
-        y_pred = linreg.predict(x_train_poly)
-        sample_type = 'train'
-
-        # store information about model performance
-        # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-        dct = {'model_number': model_number, 
-            'sample_type': sample_type, 
-            'metric_type': 'RMSE',
-            'score': sqrt(sk.metrics.mean_squared_error(y_train, y_pred))}
-        model_results = model_results.append(dct, ignore_index=True)
-
-        # make predictions for the validate sample
-        y_pred = linreg.predict(x_validate_poly)
-        sample_type = 'validate'
-
-        # store information about model performance
-        # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-        dct = {'model_number': model_number, 
-            'sample_type': sample_type, 
-            'metric_type': 'RMSE',
-            'score': sqrt(sk.metrics.mean_squared_error(y_validate, y_pred))}
-        model_results = model_results.append(dct, ignore_index=True)
-        
-    return model_number, model_info, model_results
-
-def run_OLS_with_clusters(train, validate, target, model_number, model_info, model_results):
-    
-    # identify the cluster features
-    cluster_features = [col for col in train.columns if 'cluster_' in col and 'enc_' not in col]
-
-    for cluster_feature in cluster_features:
-
-        # including the most highly correlated features from exploration
-        features = ['scaled_sqft',
-                    'scaled_bedroomcnt',
-                    'scaled_bathroomcnt',
-                    'scaled_fullbathcnt',
-                    'scaled_age',
-                    'scaled_assessmentyear',
-                    'scaled_yearbuilt',
-                    'scaled_garagecarcnt',
-                    'scaled_garagetotalsqft']
-
-        # adding encoded cluster feature columns to feature set
-        for encoded_cluster_column in [col for col in train.columns if f'enc_{cluster_feature}_' in col]:
-            features.append(encoded_cluster_column)
-
-        # establish model number
-        model_number += 1
-
-        # establish model type
-        model_type = 'OLS regression'
-
-        # create a dictionary containing the features and hyperparamters used in this model instance
-        dct = {'model_number': model_number,
-               'model_type': model_type,
-               'features': features,
-               'cluster': cluster_feature[8:]}
-        # append that dictionary to the model_info dataframe
-        model_info = model_info.append(dct, ignore_index=True)
-
-        #split the samples into x and y
-        x_train = train[features]
-        y_train = train[target]
-
-        x_validate = validate[features]
-        y_validate = validate[target]
-
-        # create the model object and fit to the training sample
-        linreg = LinearRegression(normalize=True).fit(x_train, y_train)
-
-        # make predictions for the training sample
-        y_pred = linreg.predict(x_train)
-        sample_type = 'train'
-
-        # store information about model performance
-        # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-        dct = {'model_number': model_number, 
-               'sample_type': sample_type, 
-               'metric_type': 'RMSE',
-               'score': sqrt(sk.metrics.mean_squared_error(y_train, y_pred))}
-        model_results = model_results.append(dct, ignore_index=True)
-
-        # make predictions for the validate sample
-        y_pred = linreg.predict(x_validate)
-        sample_type = 'validate'
-
-        # store information about model performance
-        # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-        dct = {'model_number': model_number, 
-               'sample_type': sample_type, 
-               'metric_type': 'RMSE',
-               'score': sqrt(sk.metrics.mean_squared_error(y_validate, y_pred))}
-        model_results = model_results.append(dct, ignore_index=True)
-        
-    return model_number, model_info, model_results
-
-def run_PolyReg_with_clusters(train, validate, target, model_number, model_info, model_results):
-    
-    cluster_features = [col for col in train.columns if 'cluster_' in col and 'enc_' not in col]
-    
-    for degree in range(2, 5):
-
-        for cluster_feature in cluster_features:
-
-
-            # including the most highly correlated features from exploration
-            features = ['scaled_sqft',
-                        'scaled_bedroomcnt',
-                        'scaled_bathroomcnt',
-                        'scaled_fullbathcnt',
-                        'scaled_age',
-                        'scaled_assessmentyear',
-                        'scaled_yearbuilt',
-                        'scaled_garagecarcnt',
-                        'scaled_garagetotalsqft']
-
-            # adding encoded cluster feature columns to feature set
-            for encoded_cluster_column in [col for col in train.columns if f'enc_{cluster_feature}_' in col]:
-                features.append(encoded_cluster_column)
-
-            # establish model number
-            model_number += 1
-
-            # establish model type
-            model_type = 'polynomial regression'
-
-            # create a dictionary containing the features and hyperparamters used in this model instance
-            dct = {'model_number': model_number,
-                   'model_type': model_type,
-                   'features': features,
-                   'cluster': cluster_feature[8:],
-                   'degree': degree}
-            # append that dictionary to the model_info dataframe
-            model_info = model_info.append(dct, ignore_index=True)
-
-            #split the samples into x and y
-            x_train = train[features]
-            y_train = train[target]
-
-            x_validate = validate[features]
-            y_validate = validate[target]
-
-            # create a polynomial features object
-            pf = PolynomialFeatures(degree=degree)
-
-            # fit and transform the data
-            x_train_poly = pf.fit_transform(x_train)
-            x_validate_poly = pf.fit_transform(x_validate)
-
-            # create the model object and fit to the training sample
-            linreg = LinearRegression().fit(x_train_poly, y_train)
-
-            # make predictions for the training sample
-            y_pred = linreg.predict(x_train_poly)
-            sample_type = 'train'
-
-            # store information about model performance
-            # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-            dct = {'model_number': model_number, 
-                   'sample_type': sample_type, 
-                   'metric_type': 'RMSE',
-                   'score': sqrt(sk.metrics.mean_squared_error(y_train, y_pred))}
-            model_results = model_results.append(dct, ignore_index=True)
-
-            # make predictions for the validate sample
-            y_pred = linreg.predict(x_validate_poly)
-            sample_type = 'validate'
-
-            # store information about model performance
-            # create dictionaries for each metric type for the train sample and append those dictionaries to the model_results dataframe
-            dct = {'model_number': model_number, 
-                   'sample_type': sample_type, 
-                   'metric_type': 'RMSE',
-                   'score': sqrt(sk.metrics.mean_squared_error(y_validate, y_pred))}
-            model_results = model_results.append(dct, ignore_index=True)
-            
-    return model_number, model_info, model_results
-
-def test_model_8(train, test, target):
-    
-    # identify features used in the model
-    features = ['scaled_sqft',
-                'scaled_bedroomcnt',
-                'scaled_bathroomcnt',
-                'scaled_fullbathcnt',
-                'scaled_age',
-                'scaled_assessmentyear',
-                'scaled_yearbuilt',
-                'scaled_garagecarcnt',
-                'scaled_garagetotalsqft',
-                'enc_cluster_BedBathTaxvaluepersqft_1',
-                'enc_cluster_BedBathTaxvaluepersqft_2']
-    
-    #split the samples into x and y
-    x_train = train[features]
-    y_train = train[target]
-
-    x_test = test[features]
-    y_test = test[target]
-
-    # create the model object and fit to the training sample
-    linreg = LinearRegression(normalize=True).fit(x_train, y_train)
-
-    # make predictions for the test sample
-    y_pred = linreg.predict(x_test)
-    
-    print(f'Model #8 RMSE on test sample: {round(sqrt(sk.metrics.mean_squared_error(y_test, y_pred)),7)}')
+    #Initialize the RFE object, 
+    #setting the hyperparameters to be our linear regression 
+    #(as the algorithm to test the features on) 
+    #and the number of features to be returned
+    rfe = RFE(lm, number_of_features)
+
+    #Fit the RFE object to our data. 
+    #(This means create multiple linear regression models,
+    #find the one that performs best, 
+    #and identify the predictors that are used in that model.
+    #Those are the features we want.)
+    #Transform our X dataframe to include only 
+    #the 'number_of_features' that performed the best
+    rfe.fit_transform(predictors, target)
+
+    #Create a mask to hold a list of the features that were selected or not
+    mask = rfe.support_
+
+    #We get a list of the feature names selected from 
+    #X_train using .loc with our mask, 
+    #using .columns to get the column names, 
+    #and convert the values to a list using .tolist()
+    X_reduced_scaled_rfe = predictors.iloc[:, mask].columns.tolist()
+
+    return X_reduced_scaled_rfe
+
+########################### Train Modeling Functions ###########################
+
+
+def linearReg_train(X_train, y_train):
+    '''
+    This function creates a multilinear reression model 
+    for the training dataframe
+    '''
+    # Initialize the Linear Regression Object
+    lm = LinearRegression(normalize=True)
+    # Fitting the data to model
+    lm.fit(X_train, y_train)
+    # Get the predicted y-values
+    lm_pred = lm.predict(X_train)
+    # Evaluate RMSE
+    lm_rmse = mean_squared_error(y_train, lm_pred)**(1/2)
+    return lm_rmse
+
+
+def lassoLars_train(X_train, y_train, alpha = 1):
+    '''
+    This function creates a LASSO and LARS model 
+    for the training dataframe
+    '''
+    # Initialize the LassoLars aplha variable
+    lars = LassoLars(alpha)
+    # Fitting the data to model
+    lars.fit(X_train, y_train)
+    # Get the predicted y-values
+    lars_pred = lars.predict(X_train)
+    # Evaluate RMSE
+    lars_rmse = mean_squared_error(y_train, lars_pred)**(1/2)
+    return lars_rmse
+
+
+def poly_linearReg_train(X_train, y_train, degrees):
+    '''
+    This function creates a polynomial regression model 
+    for the training dataframe
+    '''
+    pf = PolynomialFeatures(degree=degrees)
+    # Fitting and transforming the data to model
+    X_train_squared = pf.fit_transform(X_train)
+    # Feeding the squared data into our linear model
+    lm_squared = LinearRegression()
+    # Fitting the squared data to model
+    lm_squared.fit(X_train_squared, y_train)
+    # Get the predicted y-values
+    lm_squared_pred = lm_squared.predict(X_train_squared)
+    # Evaluate RMSE
+    lm_squared_rmse = mean_squared_error(y_train, lm_squared_pred)**(1/2)
+    return lm_squared_rmse
+
+
+########################### Validate Modeling Functions ###########################
+
+
+def linearReg_validate(X_train, y_train, X_validate, y_validate):
+    '''
+    This function creates a multilinear reression model 
+    for the validate or test dataframe
+    '''
+    # Initialize the Linear Regression Object
+    lm = LinearRegression(normalize=True)
+    # Fitting the data to model
+    lm.fit(X_train, y_train)
+    # Get the predicted y-values
+    lm_pred = lm.predict(X_validate)
+    # Evaluate RMSE
+    lm_rmse = mean_squared_error(y_validate, lm_pred)**(1/2)
+    return lm_rmse
+
+def lassoLars_validate(X_train, y_train, X_validate, y_validate, alpha = 1):
+    '''
+    This function creates a LASSO and LARS model 
+    for the validate or test dataframe
+    '''
+    lars = LassoLars(alpha)
+    # Fitting the data to model
+    lars.fit(X_train, y_train)
+    # Get the predicted y-values
+    lars_pred = lars.predict(X_validate)
+    # Evaluate RMSE
+    lars_rmse = mean_squared_error(y_validate, lars_pred)**(1/2)
+    return lars_rmse
+
+def poly_linearReg_validate(X_train, y_train, X_validate, y_validate, degrees):
+    '''
+    This function creates a polynomial regression model 
+    for the validate or test dataframe
+    '''
+    pf = PolynomialFeatures(degree=degrees)
+    # Fitting and transforming the train data to model
+    X_train_squared = pf.fit_transform(X_train)
+    # Fitting the validate data to model
+    X_validate_squared = pf.transform(X_validate)
+    # Feeding the squared data into our linear model
+    lm_squared = LinearRegression()
+    # Fitting the squared data to model
+    lm_squared.fit(X_train_squared, y_train)
+    # Get the predicted y-values
+    lm_squared_pred = lm_squared.predict(X_validate_squared)
+    # Evaluate RMSE
+    lm_squared_rmse = mean_squared_error(y_validate, lm_squared_pred)**(1/2)
+    return lm_squared_rmse
