@@ -1,5 +1,24 @@
-import os
 import pandas as pd
+import numpy as np
+import os
+from env import host, username, password
+import warnings
+warnings.filterwarnings("ignore")
+
+# ****************************  connection **********************************************
+
+# Create helper function to get the necessary connection url.
+def get_connection(db_name):
+    '''
+    This function uses my info from my env file to
+    create a connection url to access the Codeup db.
+    '''
+    from env import host, username, password
+    return f'mysql+pymysql://{username}:{password}@{host}/{db_name}'
+
+
+# **************************** Zillow ******************************************************
+
 
 def zillow_data():
     '''
