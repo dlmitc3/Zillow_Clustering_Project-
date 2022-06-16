@@ -32,7 +32,7 @@ My goal for this project is to create a model that will find what is driving the
 
 ## Hypothesis
 
-- Hypothesis 1:
+### Hypothesis 1:
 
     - H0: The mean logerror is the same across all counties
     - Ha: The mean logerror is not the same across all counties
