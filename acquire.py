@@ -1,76 +1,80 @@
+from env import host, user, password
 import pandas as pd
 import numpy as np
 import os
-from env import host, username, password
-import warnings
-warnings.filterwarnings("ignore")
 
-# ****************************  connection **********************************************
 
-# Create helper function to get the necessary connection url.
-def get_connection(db_name):
+################################### Get Connection to SQL Function ###################################
+
+def get_connection(db, user = user, host = host, password = password):
     '''
     This function uses my info from my env file to
     create a connection url to access the Codeup db.
     '''
-    from env import host, username, password
-    return f'mysql+pymysql://{username}:{password}@{host}/{db_name}'
+    return f'mysql+pymysql://{user}:{password}@{host}/{db}'
+    
+
+###################################  Acquire New Zillow Data Function ###################################
 
 
-# **************************** Zillow ******************************************************
-
-
-def zillow_data():
+def new_zillow_data():
     '''
-    This function uses a SQL query to access the Codeup MySQL database and join 
-    together all the relevant data from the zillow database.
-    The data obtained includes all properties in the dataset which had a transaction in 2017.
-    The function caches a csv in the local directory for later use. 
+    This function reads the zillow data from CodeUp database into a df,
+    write it to a csv file, and returns the df.
     '''
-    # establish a filename for the local csv
-    filename = 'zillow.csv'
-    # check to see if a local copy already exists. 
-    if os.path.exists(filename):
-        print('Reading from local CSV...')
-        # if so, return the local csv
-        return pd.read_csv(filename)
-    # otherwise, pull the data from the database:
-    # establish database url
-    url = env.get_db_url('zillow')
-    # establish query
-    sql = '''
-            SELECT prop.*,
-                   pred.logerror,
-                   const.typeconstructiondesc,
-                   arch.architecturalstyledesc,
-                   land.propertylandusedesc,
-                   heat.heatingorsystemdesc,
-                   air.airconditioningdesc, 
-                   bldg.buildingclassdesc,
-                   story.storydesc
-              FROM properties_2017 prop
-                JOIN predictions_2017            pred  USING(parcelid)
-                LEFT JOIN typeconstructiontype   const USING(typeconstructiontypeid)
-                LEFT JOIN architecturalstyletype arch  USING(architecturalstyletypeid)
-                LEFT JOIN propertylandusetype    land  USING(propertylandusetypeid)
-                LEFT JOIN heatingorsystemtype    heat  USING(heatingorsystemtypeid)
-                LEFT JOIN airconditioningtype    air   USING(airconditioningtypeid)
-                LEFT JOIN buildingclasstype      bldg  USING(buildingclasstypeid)
-                LEFT JOIN storytype              story USING(storytypeid)
-              WHERE pred.transactiondate LIKE "2017%%"
-                AND pred.transactiondate in (
-                                             SELECT MAX(transactiondate)
-                                               FROM predictions_2017
-                                               GROUP BY parcelid
-                                             )
-                AND prop.latitude IS NOT NULL
-                AND prop.longitude IS NOT NULL;
-            '''
-    print('No local file exists\nReading from SQL database...')
-    # query the database and return the resulting table as a pandas dataframe
-    df = pd.read_sql(sql, url)
-    # save the dataframe to the local directory as a csv
-    print('Saving to local CSV... ')
-    df.to_csv(filename, index=False)
-    # return the resulting dataframe
+    sql_query = '''
+                select * 
+                from properties_2017
+                join predictions_2017 using (parcelid)
+                left join airconditioningtype using (airconditioningtypeid)
+                left join architecturalstyletype using (architecturalstyletypeid)
+                left join buildingclasstype using (buildingclasstypeid)
+                left join heatingorsystemtype using (heatingorsystemtypeid)
+                left join propertylandusetype using (propertylandusetypeid)
+                left join storytype using (storytypeid)
+                left join typeconstructiontype using (typeconstructiontypeid)
+                left join unique_properties using (parcelid)
+                where latitude is not null 
+                and longitude is not null
+                and propertylandusetypeid = 261;
+                '''
+    df = pd.read_sql(sql_query, get_connection('zillow'))
+    df.to_csv('zillow_df.csv')
+    return df
+
+
+###################################  Get Zillow Data Function ###################################
+
+
+def get_zillow_data(cached=False):
+    '''
+    This function reads in zillow data from CodeUp database if cached == False 
+    or if cached == True reads in mall customers df from a csv file, returns df.
+    '''
+    if cached or os.path.isfile('zillow_df.csv') == False:
+        df = new_zillow_data()
+    else:
+        df = pd.read_csv('zillow_df.csv', index_col=0)
+    return df
+
+
+def new_iris_data():
+    '''
+    This function reads the iris data from CodeUp database into a df,
+    write it to a csv file, and returns the df.
+    '''
+    sql_query = 'SELECT * FROM measurements AS m JOIN species USING (species_id)'
+    df = pd.read_sql(sql_query, get_connection('iris_db'))
+    df.to_csv('iris.csv')
+    return df
+
+def get_iris_data(cached=False):
+    '''
+    This function reads in iris data from CodeUp database if cached == False 
+    or if cached == True reads in mall customers df from a csv file, returns df.
+    '''
+    if cached or os.path.isfile('iris.csv') == False:
+        df = new_iris_data()
+    else:
+        df = pd.read_csv('iris.csv', index_col=0)
     return df
