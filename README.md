@@ -69,6 +69,11 @@ My goal for this project is to create a model that will find what is driving the
     - H0: The mean logerror is the same across all value clusters
     - Ha: The mean logerror is the same across all value clusters
 
+### Hypothesis 8:
+
+    - H0: The mean logerror is the same across all age of property clusters
+    - Ha: The mean logerror is the same across all age of property clusters
+
 
 # Project Plan: Breaking it Down
 
