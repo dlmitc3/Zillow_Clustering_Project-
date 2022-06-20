@@ -1,13 +1,15 @@
+# Zillow Clustering Project
+
 ![1](https://user-images.githubusercontent.com/102172479/172487815-8c9955eb-f3da-44c0-b29a-5401d9424e2a.jpeg)
 
 ## About the Project
 -------------------------------------------------------------------------------------
 ### Background
 
-I am a junior data scientists on the Zillow data science team. Through my exploration of or data I have found some features that could be driving the errors in the Zestimates for single unit/single family homes in 2017?". 
+I am a junior data scientists on the Zillow data science team. Through my exploration of the data I have found some features that could be driving the errors in the Zestimates for single unit/single family homes in 2017?". 
 
 
-**Acknowledgement:**The dataset was provided by Codeup's MySequel Database
+**Acknowledgement:**The dataset was provided by Codeup's MySql Database
 
 ### Goals
 
@@ -15,8 +17,34 @@ My goal for this project is to create a model that will find what is driving the
 
 - A clearly named final notebook. This notebook will be what I present and will contain plenty of markdown documentation and cleaned up code.
 - A README that explains what the project is, how to reproduce you work, and your notes from project planning
-- A Python module or modules that automate the data acquisistion and preparation process. These modules should be imported and used in your final notebook.
+- Python modules that automate the data acquisistion and preparation process. These modules should be imported and used in your final notebook.
 
+# Data Dictionary
+
+
+| Features                     | Definition                               |
+| ---------------------------- | ---------------------------------------- |
+| structure\_dollar\_per\_sqft | the amount per sqft for the home         |
+| bedroomcnt                   | the amount of bedrooms inside the home   |
+| calculatedfinishedsquarefeet | the total square feet of the home        |
+| orange                       | orange county                            |
+| no heating                   | no heating system                        |
+| longitude                    | the longitude coordinate                 |
+| los\_angeles                 | los\_angeles county                      |
+| latitude                     | the latitude coordinate                  |
+| taxrate                      | tax amount divided by tax valuedollarcnt |
+| central\_heating             | central heating system                   |
+| poolcnt                      | the number of pools                      |
+| roomcnt                      | the total number of rooms                |
+| age                          | years since it has been built            |
+| land\_dollar\_per\_sqft      | price of the home per sqft               |
+| acres                        | the amount of the land                   |
+| floor\_wall\_heating         | type of heating system                   |
+| fireplacecnt                 | the total amount of fireplaces           |
+| bed\_bath\_ratio             | the ratio of bedrooms to bathrooms       |
+| regionidcity                 | region id city number                    |
+| regionidzip                  | region id zip number                     |
+| ventura                      | ventura county                           |
 
 
 | Target   | Definition                                                                           |
@@ -71,8 +99,8 @@ My goal for this project is to create a model that will find what is driving the
 
 ### Hypothesis 8:
 
-    - H0: The mean logerror is the same across all age of property clusters
-    - Ha: The mean logerror is the same across all age of property clusters
+    - H0: The mean logerror is the same across all age of property 
+    - Ha: The mean logerror is the same across all age of property 
 
 
 # Project Plan: Breaking it Down
